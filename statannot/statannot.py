@@ -98,8 +98,9 @@ def add_stat_annotation(ax,
                         test='t-test_welch', text_format='star', pvalue_format_string=DEFAULT,
                         loc='inside', show_test_name=True, pvalue_thresholds=DEFAULT,
                         use_fixed_offset=False, line_offset_to_box=None, line_offset=None,
-                        line_height=0.02, text_offset=1, stack=True,
-                        color='0.2', linewidth=1.5, fontsize='medium', verbose=1):
+                        line_height=0.02, text_offset=1, stack=True, mode='standard',
+                        y_user_defined=12,color='0.2', linewidth=1.5,
+                        fontsize='medium', verbose=1):
     """
     User should use the same argument for the data, x, y, hue, order, hue_order as the seaborn boxplot function.
 
@@ -224,6 +225,7 @@ def add_stat_annotation(ax,
     y_stack = []
     annList = []
     test_result_list = []
+    count_box_pairs = 0
     for box1, box2 in box_pairs:
 
         valid = None
@@ -273,18 +275,33 @@ def add_stat_annotation(ax,
                                    test_short_name)
 
             if loc == 'inside':
-                yref = max(ymax1, ymax2)
+                if mode == 'horizontal_p_val':
+                    yref = y_user_defined
+                #else, use the standard version
+                else:
+                    yref = max(ymax1, ymax2)
             elif loc == 'outside':
                 yref = ylim[1]
+            #We count the number of box_pairs to increment the annotation
+            count_box_pairs+=1
 
             if stack:
-                if len(y_stack) > 0:
-                    yref2 = max(yref, max(y_stack))
+                if mode == 'horizontal_p_val':
+                    if len(y_stack) > 0:
+                        yref2 = yref+count_box_pairs*0.1
+                    else:
+                        yref2 = yref2 = yref+count_box_pairs*0.1
+                #else use the standard mode
                 else:
-                    yref2 = yref
+                    if len(y_stack) > 0:
+                        yref2 = max(yref, max(y_stack))
+                    else:
+                        yref2 = yref
             else:
                 yref2 = yref
-
+            #check if it is mandatory
+            # y_offset_to_box = 0.5
+            # y_offset = 0.5
             if len(y_stack) == 0:
                 y = yref2 + y_offset_to_box
             else:
