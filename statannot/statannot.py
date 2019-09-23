@@ -99,7 +99,8 @@ def add_stat_annotation(ax,
                         loc='inside', show_test_name=True, pvalue_thresholds=DEFAULT,
                         use_fixed_offset=False, line_offset_to_box=None, line_offset=None,
                         line_height=0.02, text_offset=1, stack=True,
-                        color='0.2', linewidth=1.5, fontsize='medium', verbose=1):
+                        color='0.2', linewidth=1.5, fontsize='medium', include_outliers=True,
+                        verbose=1):
     """
     User should use the same argument for the data, x, y, hue, order, hue_order as the seaborn boxplot function.
 
@@ -252,8 +253,21 @@ def add_stat_annotation(ax,
             x2 = find_x_position_box(box_plotter, box2)
             box_data1 = get_box_data(box_plotter, box1)
             box_data2 = get_box_data(box_plotter, box2)
-            ymax1 = box_data1.max()
-            ymax2 = box_data2.max()
+            
+            # Adjust y-maximum based off whether outliers are included or not
+            if include_outliers:
+                ymax1 = box_data1.max()
+                ymax2 = box_data2.max()
+            else:
+                # Define ymax to be at the top of the whisker (1.5x the interquartile range)
+                Q1 = np.quantile(box_data1, 0.25)
+                Q3 = np.quantile(box_data1, 0.75)
+                IQR = Q3 - Q1
+                ymax1 = (IQR * 1.5) + Q3
+                Q1 = np.quantile(box_data2, 0.25)
+                Q3 = np.quantile(box_data2, 0.75)
+                IQR = Q3 - Q1
+                ymax2 = (IQR * 1.5) + Q3
 
             pval, formatted_output, test_short_name = stat_test(box_data1, box_data2, test)
             test_result_list.append({'pvalue':pval, 'test_short_name':test_short_name,
