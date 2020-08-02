@@ -16,6 +16,7 @@ Python package to optionnally compute statistical test and add statistical annot
 - Annotations can be located inside or outside the plot.
 - Format of the statistical test annotation can be customized: star annotation, simplified p-value, or explicit p-value.
 - Optionally, custom p-values can be given as input. In this case, no statistical test is performed.
+- Plots can be verticle or horizontal.
 
 ## Installation
 
@@ -61,7 +62,9 @@ More examples are available in the jupyter notebook `example/example.ipynb`.
 
 ![Example 1](/example/example_non-hue_outside.png)
 
-![Example 2](/example/example_hue_layout.png)
+![Example 2](/example/example_non-hue_outside_horizontal.png)
+
+![Example 3](/example/example_hue_layout.png)
 
 ## Requirements
 
