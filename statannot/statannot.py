@@ -468,10 +468,14 @@ def add_stat_annotation(ax, plot='boxplot',
     # Build the list of box data structure pairs
     box_struct_pairs = []
     for i_box_pair, (box1, box2) in enumerate(box_pairs):
+
         valid = box1 in box_names and box2 in box_names
         if not valid:
-            raise ValueError("box_pairs contains an invalid box pair.")
-            pass
+            if not box1 in box_names:
+                raise ValueError(f"box_pairs contains an invalid box pair, expected {box1} in {box_names}")
+            else:
+                raise ValueError(f"box_pairs contains an invalid box pair, expected {box2} in {box_names}")
+
         # i_box_pair will keep track of the original order of the box pairs.
         box_struct1 = dict(box_structs_dic[box1], i_box_pair=i_box_pair)
         box_struct2 = dict(box_structs_dic[box2], i_box_pair=i_box_pair)
