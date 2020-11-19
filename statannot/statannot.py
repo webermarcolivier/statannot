@@ -27,6 +27,9 @@ def stat_test(
 ):
     """Get formatted result of two sample statistical test.
 
+    EDIT 16.11.2020 - Veronika Brumovska
+    - implementing ANOVA (line 84)
+    
     Arguments
     ---------
     bbox_data1, bbox_data2
@@ -74,6 +77,17 @@ def stat_test(
         result = StatResult(
             'Mann-Whitney-Wilcoxon test two-sided',
             'M.W.W.',
+            'U_stat',
+            u_stat,
+            pval,
+        )
+    elif test == 'anova':
+        u_stat, pval = stats.f_oneway(
+            box_data1, box_data2, **stats_params
+        )
+        result = StatResult(
+            'anova',
+            'anova',
             'U_stat',
             u_stat,
             pval,
@@ -365,7 +379,7 @@ def add_stat_annotation(ax, plot='boxplot',
                              "or `test_short_name` must be `None`.")
         valid_list = ['t-test_ind', 't-test_welch', 't-test_paired',
                       'Mann-Whitney', 'Mann-Whitney-gt', 'Mann-Whitney-ls',
-                      'Levene', 'Wilcoxon', 'Kruskal']
+                      'Levene', 'Wilcoxon', 'Kruskal', "anova"]
         if test not in valid_list:
             raise ValueError("test value should be one of the following: {}."
                              .format(', '.join(valid_list)))
