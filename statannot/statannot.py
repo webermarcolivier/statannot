@@ -266,7 +266,7 @@ def simple_text(pval, pvalue_format, pvalue_thresholds, test_short_name=None):
 
 def add_stat_annotation(ax, plot='boxplot',
                         data=None, x=None, y=None, hue=None, units=None, order=None,
-                        hue_order=None, box_pairs=None, width=0.8,
+                        hue_order=None, box_pairs=None, width=0.8, orient = None,
                         perform_stat_test=True,
                         pvalues=None, test_short_name=None,
                         test=None, text_format='star', pvalue_format_string=DEFAULT,
@@ -407,8 +407,12 @@ def add_stat_annotation(ax, plot='boxplot',
         print()
 
     ylim = ax.get_ylim()
-    yrange = ylim[1] - ylim[0]
+    yrange = ylim[1] - ylim[0]  
+    xrange =  ax.get_xlim()[1] -  ax.get_xlim()[0]
+    xmax = ax.get_xlim()[1]
+    
 
+    
     if line_offset is None:
         if loc == 'inside':
             line_offset = 0.05
@@ -424,21 +428,21 @@ def add_stat_annotation(ax, plot='boxplot',
             if line_offset_to_box is None:
                 line_offset_to_box = 0.06
         elif loc == 'outside':
-            line_offset_to_box = line_offset
+            line_offset_to_box = line_offset  
     y_offset = line_offset*yrange
     y_offset_to_box = line_offset_to_box*yrange
 
     if plot == 'boxplot':
         # Create the same plotter object as seaborn's boxplot
         box_plotter = sns.categorical._BoxPlotter(
-            x, y, hue, data, order, hue_order, orient=None, width=width, color=None,
+            x, y, hue, data, order, hue_order, orient=orient, width=width, color=None, 
             palette=None, saturation=.75, dodge=True, fliersize=5, linewidth=None)
     elif plot == 'barplot':
         # Create the same plotter object as seaborn's barplot
         box_plotter = sns.categorical._BarPlotter(
             x, y, hue, data, order, hue_order,
             estimator=np.mean, ci=95, n_boot=1000, units=None,
-            orient=None, color=None, palette=None, saturation=.75,
+            orient=orient, color=None, palette=None, saturation=.75, 
             errcolor=".26", errwidth=None, capsize=None, dodge=True)
 
     # Build the list of box data structures with the x and ymax positions
@@ -497,6 +501,7 @@ def add_stat_annotation(ax, plot='boxplot',
     test_result_list = []
     ymaxs = []
     y_stack = []
+    
 
     for box_struct1, box_struct2 in box_struct_pairs:
 
@@ -557,21 +562,41 @@ def add_stat_annotation(ax, plot='boxplot',
             elif text_format is 'simple':
                 test_short_name = show_test_name and test_short_name or ""
                 text = simple_text(result.pval, simple_format_string, pvalue_thresholds, test_short_name)
-
-        yref = ymax_in_range_x1_x2
-        yref2 = yref
-
+                
         # Choose the best offset depending on wether there is an annotation below
         # at the x position in the range [x1, x2] where the stack is the highest
-        if y_stack_arr[2, i_ymax_in_range_x1_x2] == 0:
-            # there is only a box below
-            offset = y_offset_to_box
-        else:
-            # there is an annotation below
-            offset = y_offset
-        y = yref2 + offset
-        h = line_height*yrange
-        line_x, line_y = [x1, x1, x2, x2], [y, y + h, y + h, y]
+        if box_plotter.orient == 'v':
+            # if plot is verticle
+            if y_stack_arr[2, i_ymax_in_range_x1_x2] == 0:
+                # there is only a box below
+                offset = y_offset_to_box
+            else:
+                # there is an annotation below
+                offset = y_offset 
+                
+        elif box_plotter.orient == 'h':
+            # if plot is horizontal
+            if loc == 'outside':
+                if y_stack_arr[2, i_ymax_in_range_x1_x2] == 0:
+                    offset = line_offset_to_box*np.diff(ax.get_xlim())[0] 
+                else:
+                    offset = np.abs(y_stack_arr[1, i_ymax_in_range_x1_x2] -xmax) + line_height * xrange 
+            else:
+                offset = np.max(np.append(y_stack_arr[1,  i_ymax_in_range_x1_x2],[box_struct1['ymax'],box_struct2['ymax']])) - xmax + line_height * xrange                                              
+
+        # define locations of bracket, and text
+        if box_plotter.orient == 'v':
+            # if verticle
+            y = ymax_in_range_x1_x2 + offset 
+            h = line_height*yrange 
+            line_x, line_y = [x1, x1, x2, x2], [y, y + h, y + h, y]
+        else: 
+            # if horizontal
+            y = xmax + offset
+            h = line_height * xrange       
+            line_x, line_y = [y, y + h, y + h, y], [x1, x1, x2, x2]
+
+        # bracket drawing
         if loc == 'inside':
             ax.plot(line_x, line_y, lw=linewidth, c=color)
         elif loc == 'outside':
@@ -581,13 +606,24 @@ def add_stat_annotation(ax, plot='boxplot',
 
         # why should we change here the ylim if at the very end we set it to the correct range????
         # ax.set_ylim((ylim[0], 1.1*(y + h)))
-
+            
+        # annotate text
         if text is not None:
-            ann = ax.annotate(
-                text, xy=(np.mean([x1, x2]), y + h),
-                xytext=(0, text_offset), textcoords='offset points',
-                xycoords='data', ha='center', va='bottom',
-                fontsize=fontsize, clip_on=False, annotation_clip=False)
+            # annotate in different locations depending on vert or horiz plot
+            if box_plotter.orient == 'v':
+                ann = ax.annotate(
+                    text, xy=(np.mean([x1, x2]), y + h),
+                    xytext=(0, text_offset), textcoords='offset points',
+                    xycoords='data', ha='center', va='bottom',
+                    fontsize=fontsize, clip_on=False, annotation_clip=False) 
+            else:
+                ann = ax.annotate(
+                    text, xy=(y + h, np.mean([x1, x2])),
+                    xytext=(text_offset, 0),
+                    rotation=-90,
+                    textcoords='offset points',
+                    xycoords='data', ha='left', va='center',
+                    fontsize=fontsize, clip_on=False, annotation_clip=False)
             ann_list.append(ann)
 
             plt.draw()
@@ -597,7 +633,11 @@ def add_stat_annotation(ax, plot='boxplot',
                 try:
                     bbox = ann.get_window_extent()
                     bbox_data = bbox.transformed(ax.transData.inverted())
-                    y_top_annot = bbox_data.ymax
+                    if box_plotter.orient == 'v':
+                        y_top_annot = bbox_data.ymax
+                    else:
+                        y_top_annot = bbox_data.xmax 
+                        
                 except RuntimeError:
                     got_mpl_error = True
 
@@ -614,20 +654,27 @@ def add_stat_annotation(ax, plot='boxplot',
                 y_top_display = offset_trans.transform((0, y + h))
                 y_top_annot = ax.transData.inverted().transform(y_top_display)[1]
         else:
-            y_top_annot = y + h
+            if box_plotter.orient == 'h':
+                y_top_annot = y + h 
 
         y_stack.append(y_top_annot)    # remark: y_stack is not really necessary if we have the stack_array
         ymaxs.append(max(y_stack))
+
         # Fill the highest y position of the annotation into the y_stack array
         # for all positions in the range x1 to x2
-        y_stack_arr[1, (x1 <= y_stack_arr[0, :]) & (y_stack_arr[0, :] <= x2)] = y_top_annot
+        y_stack_arr[1, (x1 <= y_stack_arr[0, :]) & (y_stack_arr[0, :] <= x2)] = y_top_annot 
         # Increment the counter of annotations in the y_stack array
-        y_stack_arr[2, xi1:xi2 + 1] = y_stack_arr[2, xi1:xi2 + 1] + 1
+        y_stack_arr[2, xi1:xi2 + 1] = y_stack_arr[2, xi1:xi2 + 1] + 1          
 
     y_stack_max = max(ymaxs)
     if loc == 'inside':
-        ax.set_ylim((ylim[0], max(1.03*y_stack_max, ylim[1])))
+        if box_plotter.orient == 'v':
+            ax.set_ylim((ylim[0], max(1.03*y_stack_max, ylim[1]))) 
+        else:     
+            # Gets the left most annotation by assuming the last annotation is the leftmost, then extrating it's coordinates
+            text_dim = ax.transData.inverted().transform(ax.texts[-1].get_window_extent())
+            ax.set_xlim((ax.get_xlim()[0], max(1.06*np.max(text_dim[:,0]),xmax)))        
+
     elif loc == 'outside':
         ax.set_ylim((ylim[0], ylim[1]))
-
     return ax, test_result_list
