@@ -485,18 +485,19 @@ def add_stat_annotation(ax, plot='boxplot',
     # overlapping between annotations.
     box_struct_pairs = sorted(box_struct_pairs, key=lambda x: abs(x[1]['x'] - x[0]['x']))
 
-    # Build array that contains the x and y_max position of the highest annotation or box data at
-    # a given x position, and also keeps track of the number of stacked annotations.
-    # This array will be updated when a new annotation is drawn.
-    y_stack_arr = np.array([[box_struct['x'] for box_struct in box_structs],
-                            [box_struct['ymax'] for box_struct in box_structs],
-                            [0 for i in range(len(box_structs))]])
     if loc == 'outside':
-        y_stack_arr[1, :] = ylim[1]
+        eligible_baselines = _EligibleBaselineGroup([
+            _EligibleBaseline(bs['x'], ylim[1] + y_offset_to_box)
+            for bs in box_structs
+        ])
+    else:
+        eligible_baselines = _EligibleBaselineGroup([
+            _EligibleBaseline(bs['x'], bs['ymax'] + y_offset_to_box)
+            for bs in box_structs
+        ])
+
     ann_list = []
     test_result_list = []
-    ymaxs = []
-    y_stack = []
 
     for box_struct1, box_struct2 in box_struct_pairs:
 
@@ -510,14 +511,10 @@ def add_stat_annotation(ax, plot='boxplot',
         x2 = box_struct2['x']
         xi1 = box_struct1['xi']
         xi2 = box_struct2['xi']
-        ymax1 = box_struct1['ymax']
-        ymax2 = box_struct2['ymax']
         i_box_pair = box_struct1['i_box_pair']
 
         # Find y maximum for all the y_stacks *in between* the box1 and the box2
-        i_ymax_in_range_x1_x2 = xi1 + np.nanargmax(y_stack_arr[1, np.where((x1 <= y_stack_arr[0, :]) &
-                                                                           (y_stack_arr[0, :] <= x2))])
-        ymax_in_range_x1_x2 = y_stack_arr[1, i_ymax_in_range_x1_x2]
+        line_baseline = eligible_baselines.get_max_baseline_in_range_in_data_coordinates(x1, x2)
 
         if perform_stat_test:
             result = stat_test(
@@ -558,20 +555,26 @@ def add_stat_annotation(ax, plot='boxplot',
                 test_short_name = show_test_name and test_short_name or ""
                 text = simple_text(result.pval, simple_format_string, pvalue_thresholds, test_short_name)
 
-        yref = ymax_in_range_x1_x2
-        yref2 = yref
-
-        # Choose the best offset depending on wether there is an annotation below
-        # at the x position in the range [x1, x2] where the stack is the highest
-        if y_stack_arr[2, i_ymax_in_range_x1_x2] == 0:
-            # there is only a box below
-            offset = y_offset_to_box
-        else:
-            # there is an annotation below
-            offset = y_offset
-        y = yref2 + offset
         h = line_height*yrange
-        line_x, line_y = [x1, x1, x2, x2], [y, y + h, y + h, y]
+        if hue is not None:
+            horizontal_line_offset = box_plotter.nested_width / 8.
+        else:
+            horizontal_line_offset = box_plotter.width / 8.
+        x_left, x_right = eligible_baselines.parse_pair_as_limits(x1, x2)
+        line_x = [
+            x_left + horizontal_line_offset,
+            x_left + horizontal_line_offset,
+            x_right - horizontal_line_offset,
+            x_right - horizontal_line_offset
+        ]
+        line_y = [
+            line_baseline,
+            line_baseline + h,
+            line_baseline + h,
+            line_baseline
+        ]
+        del horizontal_line_offset, x_left, x_right
+
         if loc == 'inside':
             ax.plot(line_x, line_y, lw=linewidth, c=color)
         elif loc == 'outside':
@@ -584,7 +587,7 @@ def add_stat_annotation(ax, plot='boxplot',
 
         if text is not None:
             ann = ax.annotate(
-                text, xy=(np.mean([x1, x2]), y + h),
+                text, xy=(np.mean([x1, x2]), line_baseline + h),
                 xytext=(0, text_offset), textcoords='offset points',
                 xycoords='data', ha='center', va='bottom',
                 fontsize=fontsize, clip_on=False, annotation_clip=False)
@@ -611,23 +614,109 @@ def add_stat_annotation(ax, plot='boxplot',
                 offset_trans = mtransforms.offset_copy(
                     ax.transData, fig=fig, x=0,
                     y=1.0*fontsize_points + text_offset, units='points')
-                y_top_display = offset_trans.transform((0, y + h))
+                y_top_display = offset_trans.transform((0, line_baseline + h))
                 y_top_annot = ax.transData.inverted().transform(y_top_display)[1]
         else:
-            y_top_annot = y + h
+            y_top_annot = line_baseline + h
 
-        y_stack.append(y_top_annot)    # remark: y_stack is not really necessary if we have the stack_array
-        ymaxs.append(max(y_stack))
         # Fill the highest y position of the annotation into the y_stack array
         # for all positions in the range x1 to x2
-        y_stack_arr[1, (x1 <= y_stack_arr[0, :]) & (y_stack_arr[0, :] <= x2)] = y_top_annot
-        # Increment the counter of annotations in the y_stack array
-        y_stack_arr[2, xi1:xi2 + 1] = y_stack_arr[2, xi1:xi2 + 1] + 1
+        left_baseline, right_baseline = eligible_baselines.get_eligible_baselines_at_edges(x1, x2)
+        left_baseline.right_baseline = y_top_annot
+        right_baseline.left_baseline = y_top_annot
 
-    y_stack_max = max(ymaxs)
     if loc == 'inside':
-        ax.set_ylim((ylim[0], max(1.03*y_stack_max, ylim[1])))
+        ax.set_ylim((ylim[0], max(1.03*eligible_baselines.get_max_baseline(), ylim[1])))
     elif loc == 'outside':
         ax.set_ylim((ylim[0], ylim[1]))
 
     return ax, test_result_list
+
+
+class _EligibleBaseline:
+
+    def __init__(self, x_position, baseline_in_data_coords):
+        self._x_position = x_position
+        self.left_baseline = baseline_in_data_coords
+        self.right_baseline = baseline_in_data_coords
+
+    @property
+    def x_position(self):
+        return self._x_position
+
+    @property
+    def max_baseline(self):
+        return max(self.right_baseline, self.left_baseline)
+
+
+class _EligibleBaselineGroup:
+
+    def __init__(self, eligible_baselines):
+        self._eligible_baselines = eligible_baselines
+
+    def __getitem__(self, slice_):
+        return self._eligible_baselines[slice_]
+
+    def __len__(self):
+        return len(self._eligible_baselines)
+
+    def __iter__(self):
+        return iter(self._eligible_baselines)
+
+    def get_eligible_baseline_by_x_position(self, x):
+        for bsl in self:
+            if np.isclose(x, bsl.x_position):
+                return bsl
+        raise ValueError('No eligible baselines at x coordinate {}'.format(x))
+
+    @staticmethod
+    def parse_pair_as_limits(a, b):
+        if a < b:
+            lower = a
+            upper = b
+        elif a > b:
+            lower = b
+            upper = a
+        else:
+            raise ValueError('a = {} and b = {} are equal'.format(a, b))
+        return lower, upper
+
+    def get_eligible_baselines_at_edges(self, x1, x2):
+        """Get pair of (left_baseline, right_baseline) from unordered pair of coordinates."""
+        x_left, x_right = self.parse_pair_as_limits(x1, x2)
+        output = (
+            self.get_eligible_baseline_by_x_position(x_left),
+            self.get_eligible_baseline_by_x_position(x_right)
+        )
+        return output
+
+    def get_eligible_baselines_between(self, x1, x2):
+        """Get all eligible baselines between x1 and x2 non-inclusive."""
+        x_left, x_right = self.parse_pair_as_limits(x1, x2)
+
+        baselines = []
+        for bsl in self:
+            if (bsl.x_position > x_left) and (bsl.x_position < x_right):
+                if not (
+                        np.isclose(bsl.x_position, x_left)
+                        or np.isclose(bsl.x_position, x_right)
+                ):
+                    baselines.append(bsl)
+
+        return baselines
+
+    def get_max_baseline_in_range_in_data_coordinates(self, x1, x2):
+        x_left, x_right = self.parse_pair_as_limits(x1, x2)
+        baselines_in_range = self.get_eligible_baselines_between(x_left, x_right)
+        bsl_left, bsl_right = self.get_eligible_baselines_at_edges(x_left, x_right)
+
+        # Convert baselines to data coordinates.
+        data_coords = [bsl.max_baseline for bsl in baselines_in_range]
+        data_coords.append(bsl_left.right_baseline)
+        data_coords.append(bsl_right.left_baseline)
+
+        return np.nanmax(data_coords)
+
+    def get_max_baseline(self):
+        data_coords = [bsl.max_baseline for bsl in self]
+        return np.nanmax(data_coords)
