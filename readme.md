@@ -76,3 +76,6 @@ More examples are available in the jupyter notebook `example/example.ipynb`.
 + pandas >= 0.23.0
 + scipy >= 1.1.0
 
+## Cite
+
+A Digital Object Identifiers (DOIs) was created for the repository for easier referencing in the academic literature.
